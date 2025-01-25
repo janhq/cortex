@@ -1,0 +1,39 @@
+database:
+  url: "sqlite:///./sql_app.db"
+
+celery:
+  broker_url: "redis://redis:6379/0"
+  result_backend: "redis://redis:6379/1"
+  result_expires: 3600  # Results expire after 1 hour (in seconds)
+  job_queue: "job_queue"
+  task_routes:
+    "app.workers.tasks.*": "job_queue"
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+
+redis:
+  host: "redis"
+  port: 6379
+
+flower:
+  port: 5555
+
+logging:
+  task_log_file: "./logs/celery.log"
+  server_log_file: "./logs/server.log"
+
+jwt:
+  secret_key: "your-secret-key"  # Change this to a secure random string in production
+  algorithm: "HS256"
+  access_token_expire_minutes: 90
+llm:
+  endpoint: "http://cortex-cpp:39281"
+whisper:
+  endpoint: "http://whisper-speech:3348"
+tts:
+  endpoint: "http://text-to-speech:22312"
+storage:
+  type: "local"
+  path: ./storage/

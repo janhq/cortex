@@ -1,0 +1,20 @@
+openai-whisper==20231117
+huggingface_hub
+IPython
+pyarrow
+matplotlib
+librosa
+soundfile
+datasets
+encodec
+boto3
+fire
+vector_quantize_pytorch
+webdataset
+whisperspeech
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.2.0
+torchaudio==2.2.0
+numpy==1.26.4
+fastapi
+uvicorn

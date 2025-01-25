@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]
+asyncpg  # for PostgreSQL
+aiomysql  # for MySQL
+aiosqlite  # for SQLite
+pydantic
+celery[zstd,msgpack,redis]==5.4.0
+flower
+pyyaml
+passlib
+python-jose[cryptography]
+python-multipart
+email-validator
+docker
+aiohttp
+requests
