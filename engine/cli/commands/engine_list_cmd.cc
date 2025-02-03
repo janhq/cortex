@@ -24,7 +24,7 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
   }
 
   tabulate::Table table;
-  table.add_row({"#", "Name", "Version", "Variant", "Status"});
+  table.add_row({"#", "Name", "Version", "Variant", "Status", "Size"});
 
   auto url = url_parser::Url{
       .protocol = "http",
@@ -69,6 +69,24 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
         selected_variant_result.value()["version"].asString());
   }
 
+  std::unordered_map<std::string, std::string> variantSizeMapping;
+  if (variant_pair.has_value()) {
+    auto version_releases_url = url_parser::Url{
+        .protocol = "http",
+        .host = host + ":" + std::to_string(port),
+        .pathParams = {"v1", "engines", kLlamaEngine, "releases",
+                       variant_pair->second},
+    };
+
+    auto version_releases_json =
+        curl_utils::SimpleGetJson(version_releases_url.ToFullPath());
+
+    for (auto releaseData : version_releases_json.value()) {
+      variantSizeMapping[releaseData["name"].asString()] =
+          releaseData["size"].asString();
+    }
+  }
+
   std::vector<EngineVariantResponse> output;
   for (const auto& [key, value] : engine_map) {
     output.insert(output.end(), value.begin(), value.end());
@@ -79,12 +97,12 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
     count += 1;
     if (variant_pair.has_value() && v.name == variant_pair->first &&
         v.version == variant_pair->second) {
-      table.add_row(
-          {std::to_string(count), v.engine, v.version, v.name, "Default"});
+      table.add_row({std::to_string(count), v.engine, v.version, v.name,
+                     "Default", variantSizeMapping[v.name]});
       continue;
     }
-    table.add_row(
-        {std::to_string(count), v.engine, v.version, v.name, "Installed"});
+    table.add_row({std::to_string(count), v.engine, v.version, v.name,
+                   "Installed", variantSizeMapping[v.name]});
   }
 
   std::cout << table << std::endl;
