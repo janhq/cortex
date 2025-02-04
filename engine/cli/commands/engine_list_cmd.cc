@@ -12,6 +12,42 @@
 #include <unordered_map>
 // clang-format on
 
+
+namespace {
+// Need to change this after we rename repositories
+std::string NormalizeEngine(const std::string& engine) {
+    if (engine == kLlamaEngine) {
+        return kLlamaRepo;
+    } else if (engine == kOnnxEngine) {
+        return kOnnxRepo;
+    } else if (engine == kTrtLlmEngine) {
+        return kTrtLlmRepo;
+    }
+    return engine;
+};
+
+uintmax_t get_size(const std::filesystem::path& path) {
+    uintmax_t size = 0;
+    if (std::filesystem::is_regular_file(path)) {
+        // If it's a regular file, return its size
+        size = std::filesystem::file_size(path);
+    } else if (std::filesystem::is_directory(path)) {
+        // If it's a directory, iterate through the files inside and accumulate their sizes
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(path)) {
+            if (std::filesystem::is_regular_file(entry)) {
+                size += std::filesystem::file_size(entry);
+            }
+        }
+    } else {
+        std::cerr << "The provided path is neither a file nor a folder.\n";
+        return 0;
+    }
+    return size;
+};
+}  // namespace
+
+
+
 namespace commands {
 bool EngineListCmd::Exec(const std::string& host, int port) {
   // Start server if server is not started yet
@@ -24,7 +60,7 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
   }
 
   tabulate::Table table;
-  table.add_row({"#", "Name", "Version", "Variant", "Status", "Size"});
+  table.add_row({"#", "Name", "Version", "Variant", "Status", "Download Size", "Storage Size"});
 
   auto url = url_parser::Url{
       .protocol = "http",
@@ -93,16 +129,20 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
   }
 
   int count = 0;
+  auto base_dir = file_manager_utils::GetEnginesContainerPath();
   for (auto const& v : output) {
     count += 1;
+    auto cur_ne = NormalizeEngine(v.engine);
+    auto engine_dir = base_dir / cur_ne / v.name / v.version;
+    auto engine_size = get_size(engine_dir);
     if (variant_pair.has_value() && v.name == variant_pair->first &&
         v.version == variant_pair->second) {
       table.add_row({std::to_string(count), v.engine, v.version, v.name,
-                     "Default", variant_size_mapping[v.name]});
+                     "Default", variant_size_mapping[v.name], std::to_string(engine_size)});
       continue;
     }
     table.add_row({std::to_string(count), v.engine, v.version, v.name,
-                   "Installed", variant_size_mapping[v.name]});
+                   "Installed", variant_size_mapping[v.name], std::to_string(engine_size)});
   }
 
   std::cout << table << std::endl;
