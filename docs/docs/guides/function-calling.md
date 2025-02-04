@@ -1,35 +1,42 @@
 ---
-title: Function Calling
+title: OpenAI-Compatible Function Calling
 ---
-# Function calling with OpenAI compatible
 
-This tutorial, I use the `mistral-nemo:12b-gguf-q4-km` for testing function calling with cortex.cpp. All steps are reproduced from original openai instruction https://platform.openai.com/docs/guides/function-calling
+# Function Calling with Cortex.cpp
 
-## Step by step with function calling
+This guide demonstrates how to use function calling capabilities with Cortex.cpp that are compatible with the OpenAI API specification. We'll use the `mistral-nemo:12b-gguf-q4-km` model for these examples, following similar patterns to the [OpenAI function calling documentation](https://platform.openai.com/docs/guides/function-calling).
 
-### 1. Start server and run model.
+## Implementation Guide
+
+### 1. Start the Server
+
+First, launch the Cortex server with your chosen model:
 
 ```sh
 cortex run -d llama3.1:8b-gguf-q4-km
 ```
 
-### 2. Create a python script `function_calling.py` with this content:
+### 2. Initialize the Python Client
+
+Create a new Python script named `function_calling.py` and set up the OpenAI client:
 
 ```py
 from datetime import datetime
 from openai import OpenAI
 from pydantic import BaseModel
-```
-```py
+import json
+
+MODEL = "llama3.1:8b-gguf-q4-km"
+
 client = OpenAI(
     base_url="http://localhost:39281/v1",
-    api_key="not-needed"
+    api_key="not-needed"  # Authentication is not required for local deployment
 )
 ```
 
-This step creates OpenAI client in python
+### 3. Implement Function Calling
 
-### 3. Start create a chat completion with tool calling
+Define your function schema and create a chat completion:
 
 ```py
 tools = [
@@ -53,14 +60,14 @@ tools = [
         }
     }
 ]
-```
-```py
+
 completion_payload = {
     "messages": [
         {"role": "system", "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user."},
         {"role": "user", "content": "Hi, can you tell me the delivery date for my order?"},
     ]
 }
+
 response = client.chat.completions.create(
     top_p=0.9,
     temperature=0.6,
@@ -68,224 +75,163 @@ response = client.chat.completions.create(
     messages=completion_payload["messages"],
     tools=tools,
 )
-print(response)
 ```
 
-Because you didn't provide the `order_id`, the model will ask again
+Since no `order_id` was provided, the model will request it:
 
-```
+```sh
+# Example Response
 ChatCompletion(
-   id='1lblzWtLw9h5HG0GjYYi',
-   choices=[
-       Choice(
-           finish_reason=None,
-           index=0,
-           logprobs=None,
-           message=ChatCompletionMessage(
-               content='Of course! Please provide your order ID so I can look it up.',
-               refusal=None,
-               role='assistant',
-               audio=None,
-               function_call=None,
-               tool_calls=None
-           )
-       )
-   ],
-   created=1730204306,
-   model='_',
-   object='chat.completion',
-   service_tier=None,
-   system_fingerprint='_',
-   usage=CompletionUsage(
-       completion_tokens=15,
-       prompt_tokens=449,
-       total_tokens=464,
-       completion_tokens_details=None,
-       prompt_tokens_details=None
-   )
+    id='54yeEjbaFbldGfSPyl2i',
+    choices=[
+        Choice(
+            finish_reason='tool_calls',
+            index=0,
+            logprobs=None,
+            message=ChatCompletionMessage(
+                content='',
+                refusal=None,
+                role='assistant',
+                audio=None,
+                function_call=None,
+                tool_calls=[
+                    ChatCompletionMessageToolCall(
+                        id=None,
+                        function=Function(arguments='{"order_id": "12345"}', name='get_delivery_date'),
+                        type='function'
+                    )
+                ]
+            )
+        )
+    ],
+    created=1738543890,
+    model='_',
+    object='chat.completion',
+    service_tier=None,
+    system_fingerprint='_',
+    usage=CompletionUsage(
+        completion_tokens=16,
+        prompt_tokens=443,
+        total_tokens=459,
+        completion_tokens_details=None,
+        prompt_tokens_details=None
+    )
 )
 ```
 
-### 4. Add new message user provide order id
+### 4. Handle User Input
 
-```
+Once the user provides their order ID:
+
+```python
 completion_payload = {
     "messages": [
         {"role": "system", "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user."},
         {"role": "user", "content": "Hi, can you tell me the delivery date for my order?"},
         {"role": "assistant", "content": "Of course! Please provide your order ID so I can look it up."},
-        {"role": "user", "content": "i think it is order_12345"},
+        {"role": "user", "content": "i think it is order_70705"},
     ]
 }
 
 response = client.chat.completions.create(
-    top_p=0.9,
-    temperature=0.6,
-    model=MODEL,
+    model="llama3.1:8b-gguf-q4-km",
     messages=completion_payload["messages"],
-    tools=tools
+    tools=tools,
+    temperature=0.6,
+    top_p=0.9
 )
 ```
 
-The response of the model will be
+### 5. Process Function Results
 
-```
-ChatCompletion(
-   id='zUnHwEPCambJtrvWOAQy',
-   choices=[
-       Choice(
-           finish_reason='tool_calls',
-           index=0,
-           logprobs=None,
-           message=ChatCompletionMessage(
-               content='',
-               refusal=None,
-               role='assistant',
-               audio=None,
-               function_call=None,
-               tool_calls=[
-                   ChatCompletionMessageToolCall(
-                       id=None,
-                       function=Function(
-                           arguments='{"order_id": "order_12345"}',
-                           name='get_delivery_date'
-                       ),
-                       type='function'
-                   )
-               ]
-           )
-       )
-   ],
-   created=1730204559,
-   model='_',
-   object='chat.completion',
-   service_tier=None,
-   system_fingerprint='_',
-   usage=CompletionUsage(
-       completion_tokens=23,
-       prompt_tokens=483,
-       total_tokens=506,
-       completion_tokens_details=None,
-       prompt_tokens_details=None
-   )
-)
-```
+Handle the function call response and generate the final answer:
 
-It can return correct function with arguments
-
-### 5. Push the response to the conversation and ask model to answer user
-
-```
+```python
+# Simulate function execution
 order_id = "order_12345"
 delivery_date = datetime.now()
 
-# Simulate the tool call response
-response = {
-    "choices": [
-        {
-            "message": {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "id": "call_62136354",
-                        "type": "function",
-                        "function": {
-                            "arguments": "{'order_id': 'order_12345'}",
-                            "name": "get_delivery_date"
-                        }
-                    }
-                ]
-            }
-        }
-    ]
-}
-
-# Create a message containing the result of the function call
 function_call_result_message = {
     "role": "tool",
     "content": json.dumps({
         "order_id": order_id,
         "delivery_date": delivery_date.strftime('%Y-%m-%d %H:%M:%S')
     }),
-    "tool_call_id": response['choices'][0]['message']['tool_calls'][0]['id']
+    "tool_call_id": "call_62136354"
 }
 
-# Prepare the chat completion call payload
-completion_payload = {
-    "messages": [
-        {"role": "system", "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user."},
-        {"role": "user", "content": "Hi, can you tell me the delivery date for my order?"},
-        {"role": "assistant", "content": "Sure! Could you please provide your order ID so I can look up the delivery date for you?"},
-        {"role": "user", "content": "i think it is order_12345"},
-        response["choices"][0]["message"],
-        function_call_result_message
-    ]
-}
-
-client = OpenAI(
-    # This is the default and can be omitted
-    base_url=ENDPOINT,
-    api_key="not-needed"
-)
-
+final_messages = completion_payload["messages"] + [
+    {
+        "role": "assistant",
+        "tool_calls": [{
+            "id": "call_62136354",
+            "type": "function",
+            "function": {
+                "arguments": "{'order_id': 'order_12345'}",
+                "name": "get_delivery_date"
+            }
+        }]
+    },
+    function_call_result_message
+]
+```
+```py
 response = client.chat.completions.create(
-    top_p=0.9,
-    temperature=0.6,
-    model=MODEL,
-    messages=completion_payload["messages"],
+    model="llama3.1:8b-gguf-q4-km",
+    messages=final_messages,
     tools=tools,
+    temperature=0.6,
+    top_p=0.9
 )
 print(response)
 ```
-
-The response will include all the content that processed by the function, where the delivery date is produced by query db, ....
-
-```
+```sh
 ChatCompletion(
-   id='l1xdCuKVMYBSC5tEDlAn',
-   choices=[
-       Choice(
-           finish_reason=None,
-           index=0,
-           logprobs=None,
-           message=ChatCompletionMessage(
-               content="Your order with ID 'order_12345' is scheduled to be delivered on October 29, 2024. Is there anything else I can help you with?",
-               refusal=None,
-               role='assistant',
-               audio=None,
-               function_call=None,
-               tool_calls=None
-           )
-       )
-   ],
-   created=1730205470,
-   model='_',
-   object='chat.completion',
-   service_tier=None,
-   system_fingerprint='_',
-   usage=CompletionUsage(
-       completion_tokens=40,
-       prompt_tokens=568,
-       total_tokens=608,
-       completion_tokens_details=None,
-       prompt_tokens_details=None
-   )
+    id='UMIoW4aNrqKXW2DR1ksX',
+    choices=[
+        Choice(
+            finish_reason='stop',
+            index=0,
+            logprobs=None,
+            message=ChatCompletionMessage(
+                content='The delivery date for your order (order_12345) is February 3, 2025 at 11:53 AM.',
+                refusal=None,
+                role='assistant',
+                audio=None,
+                function_call=None,
+                tool_calls=None
+            )
+        )
+    ],
+    created=1738544037,
+    model='_',
+    object='chat.completion',
+    service_tier=None,
+    system_fingerprint='_',
+    usage=CompletionUsage(
+        completion_tokens=27,
+        prompt_tokens=535,
+        total_tokens=562,
+        completion_tokens_details=None,
+        prompt_tokens_details=None
+    )
 )
 ```
 
-## Handling parallel function calling
+## Advanced Features
 
-Cortex cpp support parallel function calling by default
+### Parallel Function Calls
 
-```
+Cortex.cpp supports calling multiple functions simultaneously:
+
+```python
 tools = [
     {
         "type": "function",
         "function": {
             "name": "get_delivery_date",
-
-                "strict": True,
-            "description": "Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'",
+            "strict": True,
+            "description": "Get the delivery date for a customer's order.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -303,7 +249,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "get_current_conditions",
-            "description": "Get the current weather conditions for a specific location",
+            "description": "Get the current weather conditions for a location",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -313,8 +259,7 @@ tools = [
                     },
                     "unit": {
                         "type": "string",
-                        "enum": ["Celsius", "Fahrenheit"],
-                        "description": "The temperature unit to use. Infer this from the user's location."
+                        "enum": ["Celsius", "Fahrenheit"]
                     }
                 },
                 "required": ["location", "unit"]
@@ -322,127 +267,56 @@ tools = [
         }
     }
 ]
+```
 
-messages = [
-    {"role": "user", "content": "Hi, can you tell me the delivery date for my order order_12345 and check the weather condition in LA?"}
-]
+### Controlling Function Execution
+
+You can control function calling behavior using the `tool_choice` parameter:
+
+```python
+# Disable function calling
 response = client.chat.completions.create(
-    top_p=0.9,
-    temperature=0.6,
     model=MODEL,
-    messages= messages,
-    tools=tools
-)
-print(response)
-```
-
-It will call 2 functions in parallel
-
-```
-ChatCompletion(
-    id='5ot3qux399DojubnBFrG',
-    choices=[
-        Choice(
-            finish_reason='tool_calls',
-            index=0,
-            logprobs=None,
-            message=ChatCompletionMessage(
-                content='',
-                refusal=None,
-                role='assistant',
-                audio=None,
-                function_call=None,
-                tool_calls=[
-                    ChatCompletionMessageToolCall(
-                        id=None,
-                        function=Function(
-                            arguments='{"order_id": "order_12345"}',
-                            name='get_delivery_date'
-                        ),
-                        type='function'
-                    ),
-                    ChatCompletionMessageToolCall(
-                        id=None,
-                        function=Function(
-                            arguments='{"location": "LA", "unit": "Fahrenheit"}',
-                            name='get_current_conditions'
-                        ),
-                        type='function'
-                    )
-                ]
-            )
-        )
-    ],
-    created=1730205975,
-    model='_',
-    object='chat.completion',
-    service_tier=None,
-    system_fingerprint='_',
-    usage=CompletionUsage(
-        completion_tokens=47,
-        prompt_tokens=568,
-        total_tokens=615,
-        completion_tokens_details=None,
-        prompt_tokens_details=None
-    )
-)
-```
-
-## Configuring function calling behavior using the tool_choice parameter
-
-User can set `tool_choice=none` to disable function calling even if the tools are provided
-
-```
-response = client.chat.completions.create(
-    top_p=0.9,
-    temperature=0.6,
-    model=MODEL,
-    messages= messages, #completion_payload["messages"],
+    messages=messages,
     tools=tools,
     tool_choice="none"
 )
-```
 
-User can also force model to call a tool by specify the tool name, in this example it's the `get_current_conditions`
-
-```
+# Force specific function
 response = client.chat.completions.create(
-    top_p=0.9,
-    temperature=0.6,
     model=MODEL,
-    messages= [{"role": "user", "content": "Hi, can you tell me the delivery date for my order order_12345 and check the weather condition in LA?"}],
+    messages=messages,
     tools=tools,
-    tool_choice= {"type": "function", "function": {"name": "get_current_conditions"}})
-
+    tool_choice={"type": "function", "function": {"name": "get_current_conditions"}}
+)
 ```
 
-User can also specify the function with enum field to the tool definition to make model generate more accurate.
+### Enhanced Function Definitions
 
-```
+Use enums to improve function accuracy:
+
+```json
 {
     "name": "pick_tshirt_size",
-    "description": "Call this if the user specifies which size t-shirt they want",
+    "description": "Handle t-shirt size selection",
     "parameters": {
         "type": "object",
         "properties": {
             "size": {
                 "type": "string",
                 "enum": ["s", "m", "l"],
-                "description": "The size of the t-shirt that the user would like to order"
+                "description": "T-shirt size selection"
             }
         },
-        "required": ["size"],
-        "additionalProperties": false
+        "required": ["size"]
     }
 }
 ```
 
-(*) Note that the accuracy of function calling heavily depends on the quality of the model. For small models like 8B or 12B, we should only use function calling with simple cases.
+## Important Notes
 
- The function calling feature from cortex.cpp is primarily an application of prompt engineering. When tools are specified, we inject a system prompt into the conversation to facilitate this functionality.
-
- Compatibility: This feature works best with models like llama3.1 and its derivatives, such as mistral-nemo or qwen.
-
- Customization: Users have the option to manually update the system prompt to fine-tune it for specific problems or use cases. The detail implementation is in this [PR](https://github.com/janhq/cortex.cpp/pull/1472/files).
-
- The full steps to mimic the function calling feature in Python using openai lib can be found [here](https://github.com/janhq/models/issues/16#issuecomment-2381129322).
+- Function calling accuracy depends on model quality. Smaller models (8B-12B) work best with simple use cases.
+- Cortex.cpp implements function calling through prompt engineering, injecting system prompts when tools are specified.
+- Best compatibility with llama3.1 and derivatives (mistral-nemo, qwen)
+- System prompts can be customized for specific use cases (see [implementation details](https://github.com/janhq/cortex.cpp/pull/1472/files))
+- For complete implementation examples, refer to our [detailed guide](https://github.com/janhq/models/issues/16#issuecomment-2381129322)

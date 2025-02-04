@@ -7,10 +7,6 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import Admonition from '@theme/Admonition';
 
-:::warning
-🚧 Cortex.cpp is currently under development. Our documentation outlines the intended behavior of Cortex, which may not yet be fully implemented in the codebase.
-:::
-
 To run LLMs on-device or on-premise, Cortex has the following requirements:
 
 ## Hardware Requirements
@@ -42,7 +38,7 @@ To run LLMs on-device or on-premise, Cortex has the following requirements:
     - 8GB for running up to 3B models (int4).
     - 16GB for running up to 7B models (int4).
     - 32GB for running up to 13B models (int4).
-    <Admonition type="info">  
+    <Admonition type="info">
     We support DDR2 RAM as the minimum requirement but recommend using newer generations of RAM for improved performance.
     </Admonition>
   </TabItem>
@@ -50,13 +46,13 @@ To run LLMs on-device or on-premise, Cortex has the following requirements:
     - 6GB can load the 3B model (int4) with `ngl` at 120 ~ full speed on CPU/ GPU.
     - 8GB can load the 7B model (int4) with `ngl` at 120 ~ full speed on CPU/ GPU.
     - 12GB can load the 13B model (int4) with `ngl` at 120 ~ full speed on CPU/ GPU.
-    <Admonition type="info">  
+    <Admonition type="info">
       Having at least 6GB VRAM when using NVIDIA, AMD, or Intel Arc GPUs is recommended.
     </Admonition>
   </TabItem>
   <TabItem value="Disk" label="Disk">
     - Having at least 10GB is recommended.
-    <Admonition type="info">  
+    <Admonition type="info">
       The app is 1.02 MB, but models are usually 4GB+.
     </Admonition>
   </TabItem>
@@ -116,7 +112,7 @@ To run LLMs on-device or on-premise, Cortex has the following requirements:
   <TabItem value="nvidia" label="NVIDIA">
     - [NVIDIA driver](https://www.nvidia.com/Download/index.aspx) version 470.63.01 or higher.
     - [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) version 12.3 or higher.
-    <Admonition type="info">  
+    <Admonition type="info">
       CUDA Toolkit dependencies will be installed when you install Cortex.
     </Admonition>
   </TabItem>

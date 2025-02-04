@@ -7,18 +7,15 @@ slug: "embeddings"
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
 
-:::warning
-🚧 Cortex.cpp is currently under development. Our documentation outlines the intended behavior of Cortex, which may not yet be fully implemented in the codebase.
-:::
-
 An embedding is a vector that represents a piece of text, with the distance between vectors indicating similarity, which means closer distances mean more similar texts, while farther distances mean less similar texts.
+
 :::note
 The Cortex Embeddings feature is fully compatible with OpenAI's [Embeddings API](https://platform.openai.com/docs/api-reference/embeddings) endpoints.
 :::
 
 ## Usage
 ### CLI
-```bash 
+```bash
 # Without Flag
 cortex embeddings "Hello World"
 # With model_id Flag

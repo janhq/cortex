@@ -4,10 +4,6 @@ description: Cortex.cpp Architecture
 slug: "cortex-cpp"
 ---
 
-:::warning
-🚧 Cortex.cpp is currently under development. Our documentation outlines the intended behavior of Cortex, which may not yet be fully implemented in the codebase.
-:::
-
 Cortex.cpp is a Local AI engine that is used to run and customize LLMs. Cortex can be deployed as a standalone server, or integrated into apps like [Jan.ai](https://jan.ai/)
 
 Cortex's roadmap is to eventually support full OpenAI API-equivalence.
