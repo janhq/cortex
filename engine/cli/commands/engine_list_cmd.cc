@@ -69,7 +69,7 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
         selected_variant_result.value()["version"].asString());
   }
 
-  std::unordered_map<std::string, std::string> variantSizeMapping;
+  std::unordered_map<std::string, std::string> variant_size_mapping;
   if (variant_pair.has_value()) {
     auto version_releases_url = url_parser::Url{
         .protocol = "http",
@@ -81,9 +81,9 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
     auto version_releases_json =
         curl_utils::SimpleGetJson(version_releases_url.ToFullPath());
 
-    for (auto releaseData : version_releases_json.value()) {
-      variantSizeMapping[releaseData["name"].asString()] =
-          releaseData["size"].asString();
+    for (auto release_data : version_releases_json.value()) {
+      variant_size_mapping[release_data["name"].asString()] =
+          release_data["size"].asString();
     }
   }
 
@@ -98,11 +98,11 @@ bool EngineListCmd::Exec(const std::string& host, int port) {
     if (variant_pair.has_value() && v.name == variant_pair->first &&
         v.version == variant_pair->second) {
       table.add_row({std::to_string(count), v.engine, v.version, v.name,
-                     "Default", variantSizeMapping[v.name]});
+                     "Default", variant_size_mapping[v.name]});
       continue;
     }
     table.add_row({std::to_string(count), v.engine, v.version, v.name,
-                   "Installed", variantSizeMapping[v.name]});
+                   "Installed", variant_size_mapping[v.name]});
   }
 
   std::cout << table << std::endl;
