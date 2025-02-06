@@ -461,6 +461,9 @@ void Models::ImportModel(
       model_config.files.push_back(modelPath);
       auto size = std::filesystem::file_size(modelPath);
       model_config.size = size;
+
+      // set this so that it doesn't nuke the original file on model deletion
+      model_entry.branch_name = "imported";
     }
     model_config.model = modelHandle;
     model_config.name = modelName.empty() ? model_config.name : modelName;

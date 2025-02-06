@@ -14,6 +14,7 @@ env:
 
 jobs:
   build-and-test:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 60
     strategy:
@@ -255,6 +256,7 @@ jobs:
           AWS_DEFAULT_REGION: "${{ secrets.MINIO_REGION }}"
 
   build-docker-and-test:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24-04-docker
     steps:
       - name: Getting the repo
@@ -286,6 +288,252 @@ jobs:
             --build-arg MINIO_SECRET_KEY="${{ secrets.MINIO_SECRET_ACCESS_KEY }}" \
             --build-arg CORTEX_CPP_VERSION="${latest_prerelease}" \
             -t menloltd/cortex:test -f docker/Dockerfile.cache .
+          docker run -it -d -p 3928:39281 --name cortex menloltd/cortex:test
+          sleep 20
+
+      - name: use python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run e2e tests
+        run: |
+          cd engine
+          python -m pip install --upgrade pip
+          python -m pip install -r e2e-test/requirements.txt
+          pytest e2e-test/test_api_docker.py
+
+      - name: Run Docker
+        continue-on-error: true
+        if: always()  
+        run: |
+          docker logs cortex
+          docker stop cortex
+          docker rm cortex
+          echo "y\n" | docker system prune -af
+
+  build-and-test-target-pr:
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: "linux"
+            name: "arm64"
+            runs-on: "ubuntu-2004-arm64"
+            cmake-flags: "-DCORTEX_CPP_VERSION=${{github.event.pull_request.head.sha}} -DCMAKE_BUILD_TEST=ON -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake"
+            build-deps-cmake-flags: ""
+            ccache-dir: ""
+          - os: "linux"
+            name: "amd64"
+            runs-on: "ubuntu-20-04-cuda-12-0"
+            cmake-flags: "-DCORTEX_CPP_VERSION=${{github.event.pull_request.head.sha}} -DCMAKE_BUILD_TEST=ON -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake"
+            build-deps-cmake-flags: ""
+            ccache-dir: ""
+          - os: "mac"
+            name: "amd64"
+            runs-on: "macos-selfhosted-12"
+            cmake-flags: "-DCORTEX_CPP_VERSION=${{github.event.pull_request.head.sha}} -DCMAKE_BUILD_TEST=ON -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake"
+            build-deps-cmake-flags: ""
+            ccache-dir: ""
+          - os: "mac"
+            name: "arm64"
+            runs-on: "macos-selfhosted-12-arm64"
+            cmake-flags: "-DCORTEX_CPP_VERSION=${{github.event.pull_request.head.sha}} -DCMAKE_BUILD_TEST=ON -DMAC_ARM64=ON -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake"
+            build-deps-cmake-flags: ""
+            ccache-dir: ""
+          - os: "windows"
+            name: "amd64"
+            runs-on: "windows-cuda-12-0"
+            cmake-flags: "-DCORTEX_CPP_VERSION=${{github.event.pull_request.head.sha}} -DCMAKE_BUILD_TEST=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_TOOLCHAIN_FILE=C:/w/cortex.cpp/cortex.cpp/engine/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache -GNinja"
+            build-deps-cmake-flags: "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache -GNinja"
+            ccache-dir: 'C:\Users\ContainerAdministrator\AppData\Local\ccache'
+    steps:
+      - name: Clone
+        id: checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: use python
+        continue-on-error: true
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install tools on Linux
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install awscli
+
+      - name: Install choco on Windows
+        if: runner.os == 'Windows'
+        run: |
+          choco install make pkgconfiglite ccache awscli 7zip ninja -y
+
+      - name: Configure vcpkg
+        if: runner.os != 'Linux'
+        run: |
+          cd engine
+          make configure-vcpkg
+
+      - name: Configure vcpkg linux amd64
+        if: runner.os != 'Linux'
+        run: |
+          cd engine
+          make configure-vcpkg
+
+      - name: Configure vcpkg linux arm64
+        if: runner.os == 'Linux'
+        run: |
+          cd engine
+          # Set env if arch is arm64
+          if [ "${{ matrix.name }}" == "arm64" ]; then
+            sudo apt install ninja-build pkg-config -y
+            export VCPKG_FORCE_SYSTEM_BINARIES=1
+          fi
+          make configure-vcpkg
+
+      - name: Build
+        if: runner.os != 'Linux'
+        run: |
+          cd engine
+          make build CMAKE_EXTRA_FLAGS="${{ matrix.cmake-flags }}" BUILD_DEPS_CMAKE_EXTRA_FLAGS="${{ matrix.build-deps-cmake-flags }}"
+
+      - name: Build
+        if: runner.os == 'Linux'
+        run: |
+          cd engine
+          if [ "${{ matrix.name }}" == "arm64" ]; then
+            export VCPKG_FORCE_SYSTEM_BINARIES=1
+          fi
+          make build CMAKE_EXTRA_FLAGS="${{ matrix.cmake-flags }}" BUILD_DEPS_CMAKE_EXTRA_FLAGS="${{ matrix.build-deps-cmake-flags }}"
+
+      - name: Run setup config
+        run: |
+          cd engine
+          echo "gitHubToken: ${{ secrets.GITHUB_TOKEN }}" > ~/.cortexrc
+          # ./build/cortex
+          cat ~/.cortexrc
+
+      - name: Run unit tests
+        run: |
+          cd engine
+          make run-unit-tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_SERVICE_ACCOUNT }}
+
+      - name: Run setup config
+        run: |
+          cd engine
+          echo "apiServerPort: 3928" > ~/.cortexrc
+          echo "gitHubToken: ${{ secrets.GITHUB_TOKEN }}" > ~/.cortexrc
+          # ./build/cortex
+          cat ~/.cortexrc
+
+      - name: Run e2e tests
+        if: github.event_name != 'schedule' && runner.os != 'Windows' && github.event.pull_request.draft == false
+        run: |
+          cd engine
+          cp build/cortex build/cortex-nightly
+          cp build/cortex build/cortex-beta
+          python -m pip install --upgrade pip
+          python -m pip install -r e2e-test/requirements.txt
+          python e2e-test/main.py
+          rm build/cortex-nightly
+          rm build/cortex-beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_SERVICE_ACCOUNT }}
+
+      - name: Run e2e tests
+        if: github.event_name != 'schedule' && runner.os == 'Windows' && github.event.pull_request.draft == false
+        run: |
+          cd engine
+          cp build/cortex.exe build/cortex-nightly.exe
+          cp build/cortex.exe build/cortex-beta.exe
+          python -m pip install --upgrade pip
+          python -m pip install -r e2e-test/requirements.txt
+          python e2e-test/main.py
+          rm build/cortex-nightly.exe
+          rm build/cortex-beta.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_SERVICE_ACCOUNT }}
+
+      - name: Run e2e tests
+        if: github.event_name == 'schedule' && runner.os != 'Windows' && github.event.pull_request.draft == false
+        run: |
+          cd engine
+          cp build/cortex build/cortex-nightly
+          cp build/cortex build/cortex-beta
+          python -m pip install --upgrade pip
+          python -m pip install -r e2e-test/requirements.txt
+          python e2e-test/cortex-llamacpp-e2e-nightly.py
+          rm build/cortex-nightly
+          rm build/cortex-beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_SERVICE_ACCOUNT }}
+
+      - name: Run e2e tests
+        if: github.event_name == 'schedule' &&  runner.os == 'Windows' && github.event.pull_request.draft == false
+        run: |
+          cd engine
+          cp build/cortex.exe build/cortex-nightly.exe
+          cp build/cortex.exe build/cortex-beta.exe
+          python -m pip install --upgrade pip
+          python -m pip install -r e2e-test/requirements.txt
+          python e2e-test/cortex-llamacpp-e2e-nightly.py
+          rm build/cortex-nightly.exe
+          rm build/cortex-beta.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_SERVICE_ACCOUNT }}
+
+      - name: Pre-package
+        run: |
+          cd engine
+          make pre-package DESTINATION_BINARY_NAME="cortex"
+
+      - name: Package
+        run: |
+          cd engine
+          make package
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-${{ matrix.os }}-${{ matrix.name }}
+          path: ./engine/cortex
+
+  build-docker-and-test-target-pr:
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24-04-docker
+    steps:
+      - name: Getting the repo
+        uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+      
+      - name: Run Docker
+        if: github.event_name != 'schedule'
+        run: |
+          docker build \
+            -t menloltd/cortex:test -f docker/Dockerfile .
+          docker run -it -d -p 3928:39281 --name cortex menloltd/cortex:test
+          sleep 20
+
+      - name: Run Docker
+        if: github.event_name == 'schedule'
+        run: |
+          latest_prerelease=$(curl -s https://api.github.com/repos/cortexcpp/cortex.cpp/releases | jq -r '.[] | select(.prerelease == true) | .tag_name' | head -n 1)
+          echo "cortex.llamacpp latest release: $latest_prerelease"
+          docker build \
+            --build-arg CORTEX_CPP_VERSION="${latest_prerelease}" \
+            -t menloltd/cortex:test -f docker/Dockerfile .
           docker run -it -d -p 3928:39281 --name cortex menloltd/cortex:test
           sleep 20
 
