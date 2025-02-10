@@ -112,6 +112,8 @@ class ModelService {
       const std::string& model_path, int ngl, int ctx_len, int n_batch = 2048,
       int n_ubatch = 2048, const std::string& kv_cache_type = "f16");
 
+  int GetCpuThreads() const;
+
   std::shared_ptr<DatabaseService> db_service_;
   std::shared_ptr<HardwareService> hw_service_;
   std::shared_ptr<DownloadService> download_service_;

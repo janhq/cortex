@@ -939,6 +939,11 @@ cpp::result<StartModelResult, std::string> ModelService::StartModel(
 
     json_helper::MergeJson(json_data, params_override);
 
+    // Set default cpu_threads if it is not configured
+    if (!json_data.isMember("cpu_threads")) {
+      json_data["cpu_threads"] = GetCpuThreads();
+    }
+
     // Set the latest ctx_len
     if (ctx_len) {
       json_data["ctx_len"] =
@@ -1319,6 +1324,26 @@ ModelService::MayFallbackToCpu(const std::string& model_path, int ngl,
   }
 
   return warning;
+}
+
+int ModelService::GetCpuThreads() const {
+  auto hw_thread_num = std::thread::hardware_concurrency();
+  auto default_engine = engine_svc_->GetDefaultEngineVariant(kLlamaEngine);
+  auto is_gpu_mode = false;
+  if (default_engine.has_error()) {
+    CTL_INF("Could not get default engine");
+  } else {
+    auto& de = default_engine.value();
+    is_gpu_mode = (de.variant.find("cuda") != std::string::npos) ||
+                  (de.variant.find("vulkan") != std::string::npos) ||
+                  (de.variant.find("mac") != std::string::npos);
+  }
+
+  if (is_gpu_mode) {
+    return std::max(hw_thread_num / 4, 1u);
+  } else {
+    return std::max(hw_thread_num / 2, 1u);
+  }
 }
 
 cpp::result<std::shared_ptr<ModelMetadata>, std::string>

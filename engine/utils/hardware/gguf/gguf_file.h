@@ -7,11 +7,11 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <variant>
 #include <vector>
-#include <optional>
 
 #ifdef _WIN32
 #include <io.h>
@@ -23,8 +23,8 @@
 #endif
 
 #include "ggml.h"
-#include "utils/string_utils.h"
 #include "utils/logging_utils.h"
+#include "utils/string_utils.h"
 
 // #define GGUF_LOG(msg)                                                  \
 //   do {                                                                 \
@@ -246,11 +246,15 @@ struct GGUFHelper {
     file_size = std::filesystem::file_size(file_path);
 
     int fd = open(file_path.c_str(), O_RDONLY);
+    if (fd == -1) {
+      CTL_INF("Failed to open file: " << file_path << ", error: " << errno);
+      return false;
+    }
     // Memory-map the file
     data = static_cast<uint8_t*>(
         mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0));
     if (data == MAP_FAILED) {
-      perror("Error mapping file");
+      CTL_INF("Error mapping file");
       close(fd);
       return false;
     }
@@ -482,7 +486,7 @@ struct GGUFFile {
 inline std::optional<GGUFFile> ParseGgufFile(const std::string& path) {
   GGUFFile gf;
   GGUFHelper h;
-  if(!h.OpenAndMMap(path)) {
+  if (!h.OpenAndMMap(path)) {
     return std::nullopt;
   }
 
