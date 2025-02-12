@@ -67,7 +67,8 @@ void ParseGguf(DatabaseService& db_service,
   CTL_INF("Adding model to modellist with branch: " << branch);
 
   auto rel = file_manager_utils::ToRelativeCortexDataPath(yaml_name);
-  CTL_INF("path_to_model_yaml: " << rel.string());
+  CTL_INF("path_to_model_yaml: " << rel.string()
+                                 << ", model: " << ggufDownloadItem.id);
 
   auto author_id = author.has_value() ? author.value() : "cortexso";
   if (!db_service.HasModel(ggufDownloadItem.id)) {
@@ -86,6 +87,7 @@ void ParseGguf(DatabaseService& db_service,
   } else {
     if (auto m = db_service.GetModelInfo(ggufDownloadItem.id); m.has_value()) {
       auto upd_m = m.value();
+      upd_m.path_to_model_yaml = rel.string();
       upd_m.status = cortex::db::ModelStatus::Downloaded;
       if (auto r = db_service.UpdateModelEntry(ggufDownloadItem.id, upd_m);
           r.has_error()) {
@@ -161,6 +163,9 @@ void ModelService::ForceIndexingModelList() {
       continue;
     }
     try {
+      CTL_DBG(fmu::ToAbsoluteCortexDataPath(
+                  fs::path(model_entry.path_to_model_yaml))
+                  .string());
       yaml_handler.ModelConfigFromFile(
           fmu::ToAbsoluteCortexDataPath(
               fs::path(model_entry.path_to_model_yaml))
@@ -171,46 +176,10 @@ void ModelService::ForceIndexingModelList() {
     } catch (const std::exception& e) {
       // remove in db
       auto remove_result = db_service_->DeleteModelEntry(model_entry.model);
+      CTL_DBG(e.what());
       // silently ignore result
     }
   }
-}
-
-cpp::result<std::string, std::string> ModelService::DownloadModel(
-    const std::string& input) {
-  if (input.empty()) {
-    return cpp::fail(
-        "Input must be Cortex Model Hub handle or HuggingFace url!");
-  }
-
-  if (string_utils::StartsWith(input, "https://")) {
-    return HandleUrl(input);
-  }
-
-  if (input.find(":") != std::string::npos) {
-    auto parsed = string_utils::SplitBy(input, ":");
-    if (parsed.size() != 2) {
-      return cpp::fail("Invalid model handle: " + input);
-    }
-    return DownloadModelFromCortexso(parsed[0], parsed[1]);
-  }
-
-  if (input.find("/") != std::string::npos) {
-    auto parsed = string_utils::SplitBy(input, "/");
-    if (parsed.size() != 2) {
-      return cpp::fail("Invalid model handle: " + input);
-    }
-
-    auto author = parsed[0];
-    auto model_name = parsed[1];
-    if (author == "cortexso") {
-      return HandleCortexsoModel(model_name);
-    }
-
-    return DownloadHuggingFaceGgufModel(author, model_name, std::nullopt);
-  }
-
-  return HandleCortexsoModel(input);
 }
 
 cpp::result<std::string, std::string> ModelService::HandleCortexsoModel(
@@ -612,7 +581,8 @@ ModelService::DownloadModelFromCortexsoAsync(
           .branch_name = branch,
           .path_to_model_yaml = rel.string(),
           .model_alias = unique_model_id,
-          .status = cortex::db::ModelStatus::Downloaded};
+          .status = cortex::db::ModelStatus::Downloaded,
+          .engine = mc.engine};
       auto result = db_service_->AddModelEntry(model_entry);
 
       if (result.has_error()) {
@@ -621,6 +591,7 @@ ModelService::DownloadModelFromCortexsoAsync(
     } else {
       if (auto m = db_service_->GetModelInfo(unique_model_id); m.has_value()) {
         auto upd_m = m.value();
+        upd_m.path_to_model_yaml = rel.string();
         upd_m.status = cortex::db::ModelStatus::Downloaded;
         if (auto r = db_service_->UpdateModelEntry(unique_model_id, upd_m);
             r.has_error()) {
@@ -1157,7 +1128,7 @@ cpp::result<ModelPullInfo, std::string> ModelService::GetModelPullInfo(
 
   if (input.find(":") != std::string::npos) {
     auto parsed = string_utils::SplitBy(input, ":");
-    if (parsed.size() != 2) {
+    if (parsed.size() != 2 && parsed.size() != 3) {
       return cpp::fail("Invalid model handle: " + input);
     }
     return ModelPullInfo{.id = input,

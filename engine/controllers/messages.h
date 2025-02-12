@@ -20,7 +20,7 @@ class Messages : public drogon::HttpController<Messages, false> {
 
   ADD_METHOD_TO(Messages::RetrieveMessage, "/v1/threads/{1}/messages/{2}", Get);
   ADD_METHOD_TO(Messages::ModifyMessage, "/v1/threads/{1}/messages/{2}",
-                Options, Post);
+                Options, Patch);
   ADD_METHOD_TO(Messages::DeleteMessage, "/v1/threads/{1}/messages/{2}",
                 Options, Delete);
   METHOD_LIST_END

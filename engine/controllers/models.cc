@@ -58,6 +58,20 @@ void Models::PullModel(const HttpRequestPtr& req,
           model_handle, desired_model_id, desired_model_name);
     } else if (model_handle.find(":") != std::string::npos) {
       auto model_and_branch = string_utils::SplitBy(model_handle, ":");
+      if (model_and_branch.size() == 3) {
+        auto mh = url_parser::Url{
+            .protocol = "https",
+            .host = kHuggingFaceHost,
+            .pathParams = {
+                model_and_branch[0],
+                model_and_branch[1],
+                "resolve",
+                "main",
+                model_and_branch[2],
+            }}.ToFullPath();
+        return model_service_->HandleDownloadUrlAsync(mh, desired_model_id,
+                                                      desired_model_name);
+      }
       return model_service_->DownloadModelFromCortexsoAsync(
           model_and_branch[0], model_and_branch[1], desired_model_id);
     }
@@ -813,14 +827,33 @@ void Models::GetModelSources(
     resp->setStatusCode(k400BadRequest);
     callback(resp);
   } else {
-    auto const& info = res.value();
+    auto& info = res.value();
     Json::Value ret;
     Json::Value data(Json::arrayValue);
-    for (auto const& i : info) {
-      data.append(i);
+    for (auto& i : info) {
+      data.append(i.second.ToJson());
     }
     ret["data"] = data;
     auto resp = cortex_utils::CreateCortexHttpJsonResponse(ret);
+    resp->setStatusCode(k200OK);
+    callback(resp);
+  }
+}
+
+void Models::GetModelSource(
+    const HttpRequestPtr& req,
+    std::function<void(const HttpResponsePtr&)>&& callback,
+    const std::string& src) {
+  auto res = model_src_svc_->GetModelSource(src);
+  if (res.has_error()) {
+    Json::Value ret;
+    ret["message"] = res.error();
+    auto resp = cortex_utils::CreateCortexHttpJsonResponse(ret);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+  } else {
+    auto& info = res.value();
+    auto resp = cortex_utils::CreateCortexHttpJsonResponse(info.ToJson());
     resp->setStatusCode(k200OK);
     callback(resp);
   }

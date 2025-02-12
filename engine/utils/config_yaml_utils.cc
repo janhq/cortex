@@ -50,6 +50,7 @@ cpp::result<void, std::string> CortexConfigMgr::DumpYamlConfig(
     node["sslCertPath"] = config.sslCertPath;
     node["sslKeyPath"] = config.sslKeyPath;
     node["supportedEngines"] = config.supportedEngines;
+    node["checkedForSyncHubAt"] = config.checkedForSyncHubAt;
 
     out_file << node;
     out_file.close();
@@ -85,7 +86,8 @@ CortexConfig CortexConfigMgr::FromYaml(const std::string& path,
          !node["verifyPeerSsl"] || !node["verifyHostSsl"] ||
          !node["verifyProxySsl"] || !node["verifyProxyHostSsl"] ||
          !node["supportedEngines"] || !node["sslCertPath"] ||
-         !node["sslKeyPath"] || !node["noProxy"]);
+         !node["sslKeyPath"] || !node["noProxy"] ||
+         !node["checkedForSyncHubAt"]);
 
     CortexConfig config = {
         .logFolderPath = node["logFolderPath"]
@@ -177,6 +179,9 @@ CortexConfig CortexConfigMgr::FromYaml(const std::string& path,
             node["supportedEngines"]
                 ? node["supportedEngines"].as<std::vector<std::string>>()
                 : default_cfg.supportedEngines,
+        .checkedForSyncHubAt = node["checkedForSyncHubAt"]
+                                   ? node["checkedForSyncHubAt"].as<uint64_t>()
+                                   : default_cfg.checkedForSyncHubAt,
     };
     if (should_update_config) {
       l.unlock();

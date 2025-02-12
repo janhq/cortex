@@ -67,6 +67,7 @@ struct CortexConfig {
   std::string sslCertPath;
   std::string sslKeyPath;
   std::vector<std::string> supportedEngines;
+  uint64_t checkedForSyncHubAt;
 };
 
 class CortexConfigMgr {

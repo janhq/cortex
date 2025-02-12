@@ -22,6 +22,107 @@ struct HuggingFaceFileSibling {
   std::string rfilename;
 };
 
+struct HuggingFaceFileSize {
+  uint64_t size_in_bytes;
+};
+
+struct HuggingFaceSiblingsFileSize {
+  std::unordered_map<std::string, HuggingFaceFileSize> file_sizes;
+  static cpp::result<HuggingFaceSiblingsFileSize, std::string> FromJson(
+      const Json::Value& json) {
+    if (json.isNull() || json.type() == Json::ValueType::nullValue) {
+      return cpp::fail("gguf info is null");
+    }
+
+    try {
+      HuggingFaceSiblingsFileSize res;
+      for (auto const& j : json) {
+        if (j["type"].asString() == "file") {
+          res.file_sizes[j["path"].asString()] =
+              HuggingFaceFileSize{.size_in_bytes = j["size"].asUInt64()};
+        }
+      }
+      return res;
+    } catch (const std::exception& e) {
+      return cpp::fail("Failed to parse gguf info: " + std::string(e.what()));
+    }
+  }
+
+  Json::Value ToJson() {
+    Json::Value root;
+    Json::Value siblings(Json::arrayValue);
+    for (auto const& s : file_sizes) {
+      Json::Value s_json;
+      s_json["path"] = s.first;
+      s_json["size"] = s.second.size_in_bytes;
+      siblings.append(s_json);
+    }
+    root["siblings"] = siblings;
+    return root;
+  }
+};
+
+inline cpp::result<HuggingFaceSiblingsFileSize, std::string>
+GetSiblingsFileSize(const std::string& author, const std::string& model_name,
+                    const std::string& branch = "main") {
+  if (author.empty() || model_name.empty()) {
+    return cpp::fail("Author and model name cannot be empty");
+  }
+  auto url_obj = url_parser::Url{
+      .protocol = "https",
+      .host = kHuggingFaceHost,
+      .pathParams = {"api", "models", author, model_name, "tree", branch}};
+
+  auto result = curl_utils::SimpleGetJson(url_obj.ToFullPath());
+  if (result.has_error()) {
+    return cpp::fail("Failed to get model siblings file size: " + author + "/" +
+                     model_name + "/tree/" + branch);
+  }
+  auto r = result.value();
+  for (auto const& j : result.value()) {
+    if (j["type"].asString() == "directory") {
+      auto url_obj =
+          url_parser::Url{.protocol = "https",
+                          .host = kHuggingFaceHost,
+                          .pathParams = {"api", "models", author, model_name,
+                                         "tree", branch, j["path"].asString()}};
+
+      auto rd = curl_utils::SimpleGetJson(url_obj.ToFullPath());
+      if (rd.has_value()) {
+        for (auto const& rdj : rd.value()) {
+          r.append(rdj);
+        }
+      }
+    }
+  }
+
+  return HuggingFaceSiblingsFileSize::FromJson(r);
+}
+
+inline cpp::result<std::string, std::string> GetReadMe(
+    const std::string& author, const std::string& model_name) {
+  if (author.empty() || model_name.empty()) {
+    return cpp::fail("Author and model name cannot be empty");
+  }
+  auto url_obj = url_parser::Url{.protocol = "https",
+                                 .host = kHuggingFaceHost,
+                                 .pathParams = {
+                                     author,
+                                     model_name,
+                                     "raw",
+                                     "main",
+                                     "README.md",
+                                 }};
+
+  auto result = curl_utils::SimpleGet(url_obj.ToFullPath());
+  if (result.has_error()) {
+    return cpp::fail("Failed to get model siblings file size: " + author + "/" +
+                     model_name + "/raw/main/README.md");
+  }
+
+  return result.value();
+}
+
 struct HuggingFaceGgufInfo {
   uint64_t total;
   std::string architecture;

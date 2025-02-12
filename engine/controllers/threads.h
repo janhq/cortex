@@ -20,7 +20,7 @@ class Threads : public drogon::HttpController<Threads, false> {
 
   ADD_METHOD_TO(Threads::RetrieveThread, "/v1/threads/{thread_id}", Get);
   ADD_METHOD_TO(Threads::ModifyThread, "/v1/threads/{thread_id}", Options,
-                Post);
+                Patch);
   ADD_METHOD_TO(Threads::DeleteThread, "/v1/threads/{thread_id}", Options,
                 Delete);
   METHOD_LIST_END

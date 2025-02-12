@@ -80,17 +80,17 @@ bool ServerStartCmd::Exec(const std::string& host, int port,
   mutable_cmds.push_back(L'\0');
   // Create child process
   if (!CreateProcess(
-          NULL,  // No module name (use command line)
+          NULL,                 // No module name (use command line)
           mutable_cmds
-              .data(),  // Command line (replace with your actual executable)
-          NULL,         // Process handle not inheritable
-          NULL,         // Thread handle not inheritable
-          FALSE,        // Set handle inheritance
-          0,            // No creation flags
-          NULL,         // Use parent's environment block
-          NULL,         // Use parent's starting directory
-          &si,          // Pointer to STARTUPINFO structure
-          &pi))         // Pointer to PROCESS_INFORMATION structure
+              .data(),          // Command line (replace with your actual executable)
+          NULL,                 // Process handle not inheritable
+          NULL,                 // Thread handle not inheritable
+          FALSE,                // Set handle inheritance
+          CREATE_NO_WINDOW,     // No new console
+          NULL,                 // Use parent's environment block
+          NULL,                 // Use parent's starting directory
+          &si,                  // Pointer to STARTUPINFO structure
+          &pi))                 // Pointer to PROCESS_INFORMATION structure
   {
     std::cout << "Could not start server: " << GetLastError() << std::endl;
     return false;

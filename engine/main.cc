@@ -1,6 +1,8 @@
 #include <drogon/HttpAppFramework.h>
 #include <drogon/drogon.h>
+#include <trantor/utils/Logger.h>
 #include <memory>
+#include <mutex>
 #include "controllers/assistants.h"
 #include "controllers/configs.h"
 #include "controllers/engines.h"
@@ -53,16 +55,28 @@
 #error "Unsupported platform!"
 #endif
 
+// Global var to signal drogon to shutdown
+volatile bool shutdown_signal;
+
 void RunServer(std::optional<std::string> host, std::optional<int> port,
                bool ignore_cout) {
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
-  signal(SIGINT, SIG_IGN);
+  auto signal_handler = +[](int sig) -> void {
+    std::cout << "\rCaught interrupt signal, shutting down\n";
+    shutdown_signal = true;
+  };
+  signal(SIGINT, signal_handler);
 #elif defined(_WIN32)
   auto console_ctrl_handler = +[](DWORD ctrl_type) -> BOOL {
-    return (ctrl_type == CTRL_C_EVENT) ? true : false;
+    if (ctrl_type == CTRL_C_EVENT) {
+      std::cout << "\rCaught interrupt signal, shutting down\n";
+      shutdown_signal = true;
+      return TRUE;
+    }
+    return FALSE;
   };
   SetConsoleCtrlHandler(
-      reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
+      reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), TRUE);
 #endif
   auto config = file_manager_utils::GetCortexConfig();
   if (host.has_value() || port.has_value()) {
@@ -204,16 +218,23 @@ void RunServer(std::optional<std::string> host, std::optional<int> port,
   auto upload_path = std::filesystem::temp_directory_path() / "cortex-uploads";
   drogon::app().setUploadPath(upload_path.string());
 
-  LOG_INFO << "Server started, listening at: " << config.apiServerHost << ":"
-           << config.apiServerPort;
-  LOG_INFO << "Please load your model";
 #ifndef _WIN32
   drogon::app().enableReusePort();
 #else
   drogon::app().enableDateHeader(false);
 #endif
-  drogon::app().addListener(config.apiServerHost,
-                            std::stoi(config.apiServerPort));
+  try {
+    drogon::app().addListener(config.apiServerHost,
+                              std::stoi(config.apiServerPort));
+  } catch (const std::exception& e) {
+    LOG_ERROR << "Failed to start server: " << e.what();
+    return;
+  }
+
+  LOG_INFO << "Server started, listening at: " << config.apiServerHost << ":"
+           << config.apiServerPort;
+  LOG_INFO << "Please load your model";
+
   drogon::app().setThreadNum(drogon_thread_num);
   LOG_INFO << "Number of thread is:" << drogon::app().getThreadNum();
   drogon::app().disableSigtermHandling();
@@ -276,11 +297,37 @@ void RunServer(std::optional<std::string> host, std::optional<int> port,
     drogon::app().addListener(config.apiServerHost, 443, true);
   }
 
-  drogon::app().run();
+  // Fires up the server in another thread and set the shutdown signal if it somehow dies
+  std::thread([] {
+    drogon::app().run();
+    shutdown_signal = true;
+  }).detach();
+
+  // Now this thread can monitor the shutdown signal
+  while (!shutdown_signal) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+
   if (hw_service->ShouldRestart()) {
     CTL_INF("Restart to update hardware configuration");
     hw_service->Restart(config.apiServerHost, std::stoi(config.apiServerPort));
   }
+  drogon::app().quit();
+}
+
+void print_help() {
+  std::cout << "Usage: \ncortex-server [options]\n\n";
+  std::cout << "Options:\n";
+  std::cout << "  --config_file_path      Path to the config file (default: "
+               "~/.cortexrc)\n";
+  std::cout << "  --data_folder_path      Path to the data folder (default: "
+               "~/cortexcpp)\n";
+  std::cout << "  --host                  Host name (default: 127.0.0.1)\n";
+  std::cout << "  --port                  Port number (default: 39281)\n";
+  std::cout << "  --ignore_cout           Ignore cout output\n";
+  std::cout << "  --loglevel              Set log level\n";
+
+  exit(0);
 }
 
 #if defined(_WIN32)
@@ -326,6 +373,8 @@ int main(int argc, char* argv[]) {
       std::wstring v = argv[i + 1];
       std::string log_level = cortex::wc::WstringToUtf8(v);
       logging_utils_helper::SetLogLevel(log_level, ignore_cout_log);
+    } else if (command == L"--help" || command == L"-h") {
+      print_help();
     }
   }
 #else
@@ -343,6 +392,8 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[i], "--loglevel") == 0) {
       std::string log_level = argv[i + 1];
       logging_utils_helper::SetLogLevel(log_level, ignore_cout_log);
+    } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+      print_help();
     }
   }
 #endif

@@ -118,13 +118,13 @@ bool DatabaseService::HasModel(const std::string& identifier) const {
   return cortex::db::Models().HasModel(identifier);
 }
 
-cpp::result<std::vector<std::string>, std::string>
-DatabaseService::GetModelSources() const {
-  return cortex::db::Models().GetModelSources();
-}
-
-cpp::result<std::vector<std::string>, std::string> DatabaseService::GetModels(
+cpp::result<std::vector<ModelEntry>, std::string> DatabaseService::GetModels(
     const std::string& model_src) const {
   return cortex::db::Models().GetModels(model_src);
+}
+
+cpp::result<std::vector<ModelEntry>, std::string>
+DatabaseService::GetModelSources() const {
+  return cortex::db::Models().GetModelSources();
 }
 // end models

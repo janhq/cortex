@@ -160,11 +160,7 @@ cortex-nightly hardware activate
 
 ### Build from Source
 
-```bash
-git clone https://github.com/janhq/cortex.cpp
-cd engine/vcpkg && ./bootstrap-vcpkg.sh
-cd ../build && cmake .. && make -j4
-```
+See [BUILDING.md](BUILDING.md)
 
 ## Uninstall Cortex
 

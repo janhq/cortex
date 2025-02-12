@@ -300,9 +300,9 @@ inline cpp::result<std::vector<cortex::hw::GPU>, std::string> GetGpuInfoList() {
 
   uint32_t extension_count = 0;
   vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
-  std::vector<VkExtensionProperties> availableExtensions(extension_count);
+  std::vector<VkExtensionProperties> available_extensions(extension_count);
   vkEnumerateInstanceExtensionProperties(nullptr, &extension_count,
-                                         availableExtensions.data());
+                                         available_extensions.data());
 
   // Create a Vulkan instance
   VkInstanceCreateInfo instance_create_info = {};
@@ -310,12 +310,12 @@ inline cpp::result<std::vector<cortex::hw::GPU>, std::string> GetGpuInfoList() {
   // If the extension is available, enable it
   std::vector<const char*> enabled_extensions;
 
-  for (const auto& extension : availableExtensions) {
+  for (const auto& extension : available_extensions) {
     enabled_extensions.push_back(extension.extensionName);
   }
 
   instance_create_info.enabledExtensionCount =
-      static_cast<uint32_t>(availableExtensions.size());
+      static_cast<uint32_t>(available_extensions.size());
   instance_create_info.ppEnabledExtensionNames = enabled_extensions.data();
 
   VkInstance instance;

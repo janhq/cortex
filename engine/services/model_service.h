@@ -42,11 +42,6 @@ class ModelService {
         inference_svc_(inference_service),
         engine_svc_(engine_svc) {};
 
-  /**
-   * Return model id if download successfully
-   */
-  cpp::result<std::string, std::string> DownloadModel(const std::string& input);
-
   cpp::result<std::string, std::string> AbortDownloadModel(
       const std::string& task_id);
 
