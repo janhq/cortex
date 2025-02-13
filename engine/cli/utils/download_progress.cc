@@ -84,7 +84,7 @@ bool DownloadProgress::Handle(
       // Check the length of the input string
       if (str.length() >= max_length) {
         return str.substr(
-            0, max_length);  // Return truncated string if it's too long
+            0, max_length - 5) + " ... ";  // Return truncated string if it's too long
       }
 
       // Calculate the number of spaces needed

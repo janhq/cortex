@@ -91,6 +91,8 @@ struct DownloadTask {
 
   std::vector<DownloadItem> items;
 
+  bool resume;
+
   std::string ToString() const {
     std::ostringstream output;
     output << "DownloadTask{id: " << id << ", type: " << static_cast<int>(type)

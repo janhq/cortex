@@ -50,7 +50,8 @@ class ModelService {
 
   cpp::result<DownloadTask, std::string> DownloadModelFromCortexsoAsync(
       const std::string& name, const std::string& branch = "main",
-      std::optional<std::string> temp_model_id = std::nullopt);
+      std::optional<std::string> temp_model_id = std::nullopt,
+      bool resume = true);
 
   std::optional<config::ModelConfig> GetDownloadedModel(
       const std::string& modelId) const;
@@ -73,11 +74,9 @@ class ModelService {
   cpp::result<ModelPullInfo, std::string> GetModelPullInfo(
       const std::string& model_handle);
 
-  cpp::result<std::string, std::string> HandleUrl(const std::string& url);
-
   cpp::result<DownloadTask, std::string> HandleDownloadUrlAsync(
       const std::string& url, std::optional<std::string> temp_model_id,
-      std::optional<std::string> temp_name);
+      std::optional<std::string> temp_name, bool resume = true);
 
   bool HasModel(const std::string& id) const;
 
@@ -94,12 +93,6 @@ class ModelService {
   std::string GetEngineByModelId(const std::string& model_id) const;
 
  private:
-  /**
-   * Handle downloading model which have following pattern: author/model_name
-   */
-  cpp::result<std::string, std::string> DownloadHuggingFaceGgufModel(
-      const std::string& author, const std::string& modelName,
-      std::optional<std::string> fileName);
 
   /**
    * Handling cortexso models. Will look through cortexso's HF repository and
@@ -111,6 +104,9 @@ class ModelService {
   cpp::result<std::optional<std::string>, std::string> MayFallbackToCpu(
       const std::string& model_path, int ngl, int ctx_len, int n_batch = 2048,
       int n_ubatch = 2048, const std::string& kv_cache_type = "f16");
+
+  cpp::result<DownloadTask, std::string> GetDownloadTask(
+      const std::string& modelId, const std::string& branch = "main");
 
   std::shared_ptr<DatabaseService> db_service_;
   std::shared_ptr<HardwareService> hw_service_;

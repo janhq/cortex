@@ -97,50 +97,6 @@ void ParseGguf(DatabaseService& db_service,
   }
 }
 
-cpp::result<DownloadTask, std::string> GetDownloadTask(
-    const std::string& modelId, const std::string& branch = "main") {
-  url_parser::Url url = {
-      .protocol = "https",
-      .host = kHuggingFaceHost,
-      .pathParams = {"api", "models", "cortexso", modelId, "tree", branch},
-  };
-
-  auto result = curl_utils::SimpleGetJsonRecursive(url.ToFullPath());
-  if (result.has_error()) {
-    return cpp::fail("Model " + modelId + " not found");
-  }
-
-  std::vector<DownloadItem> download_items{};
-  auto model_container_path = file_manager_utils::GetModelsContainerPath() /
-                              "cortex.so" / modelId / branch;
-  file_manager_utils::CreateDirectoryRecursively(model_container_path.string());
-
-  for (const auto& value : result.value()) {
-    // std::cout << "value object: " << value.toStyledString() << std::endl;
-    auto path = value["path"].asString();
-    if (path == ".gitattributes" || path == ".gitignore" ||
-        path == "README.md") {
-      continue;
-    }
-    url_parser::Url download_url = {
-        .protocol = "https",
-        .host = kHuggingFaceHost,
-        .pathParams = {"cortexso", modelId, "resolve", branch, path}};
-
-    auto local_path = model_container_path / path;
-    if (!std::filesystem::exists(local_path.parent_path())) {
-      std::filesystem::create_directories(local_path.parent_path());
-    }
-    download_items.push_back(
-        DownloadItem{.id = path,
-                     .downloadUrl = download_url.ToFullPath(),
-                     .localPath = local_path});
-  }
-
-  return DownloadTask{.id = branch == "main" ? modelId : modelId + "-" + branch,
-                      .type = DownloadType::Model,
-                      .items = download_items};
-}
 }  // namespace
 
 void ModelService::ForceIndexingModelList() {
@@ -257,7 +213,7 @@ std::optional<config::ModelConfig> ModelService::GetDownloadedModel(
 
 cpp::result<DownloadTask, std::string> ModelService::HandleDownloadUrlAsync(
     const std::string& url, std::optional<std::string> temp_model_id,
-    std::optional<std::string> temp_name) {
+    std::optional<std::string> temp_name, bool resume) {
   auto url_obj = url_parser::FromUrlString(url);
   if (url_obj.has_error()) {
     return cpp::fail("Invalid url: " + url);
@@ -273,7 +229,8 @@ cpp::result<DownloadTask, std::string> ModelService::HandleDownloadUrlAsync(
   auto file_name{url_obj->pathParams.back()};
 
   if (author == "cortexso") {
-    return DownloadModelFromCortexsoAsync(model_id, url_obj->pathParams[3]);
+    return DownloadModelFromCortexsoAsync(model_id, url_obj->pathParams[3],
+                                          std::nullopt, resume);
   }
 
   if (url_obj->pathParams.size() < 5) {
@@ -307,14 +264,16 @@ cpp::result<DownloadTask, std::string> ModelService::HandleDownloadUrlAsync(
   }
 
   auto download_url = url_parser::FromUrl(url_obj.value());
+  auto file_size = download_service_->GetFileSize(download_url);
+  CTL_DBG("file_size: " << file_size.value_or(0));
   // this assume that the model being downloaded is a single gguf file
-  auto downloadTask{DownloadTask{.id = model_id,
-                                 .type = DownloadType::Model,
-                                 .items = {DownloadItem{
-                                     .id = unique_model_id,
-                                     .downloadUrl = download_url,
-                                     .localPath = local_path,
-                                 }}}};
+  auto downloadTask{
+      DownloadTask{.id = model_id,
+                   .type = DownloadType::Model,
+                   .items = {DownloadItem{.id = unique_model_id,
+                                          .downloadUrl = download_url,
+                                          .localPath = local_path,
+                                          .bytes = file_size.value_or(0)}}}};
 
   auto on_finished = [this, author,
                       temp_name](const DownloadTask& finishedTask) {
@@ -328,6 +287,7 @@ cpp::result<DownloadTask, std::string> ModelService::HandleDownloadUrlAsync(
   };
 
   downloadTask.id = unique_model_id;
+  downloadTask.resume = resume;
   return download_service_->AddTask(downloadTask, on_finished);
 }
 
@@ -378,85 +338,6 @@ ModelService::GetEstimation(const std::string& model_handle,
   }
 }
 
-cpp::result<std::string, std::string> ModelService::HandleUrl(
-    const std::string& url) {
-  auto url_obj = url_parser::FromUrlString(url);
-  if (url_obj.has_error()) {
-    return cpp::fail("Invalid url: " + url);
-  }
-
-  if (url_obj->host == kHuggingFaceHost) {
-    if (url_obj->pathParams[2] == "blob") {
-      url_obj->pathParams[2] = "resolve";
-    }
-  }
-  auto author{url_obj->pathParams[0]};
-  auto model_id{url_obj->pathParams[1]};
-  auto file_name{url_obj->pathParams.back()};
-
-  if (author == "cortexso") {
-    return DownloadModelFromCortexso(model_id);
-  }
-
-  if (url_obj->pathParams.size() < 5) {
-    if (url_obj->pathParams.size() < 2) {
-      return cpp::fail("Invalid url: " + url);
-    }
-    return DownloadHuggingFaceGgufModel(author, model_id, std::nullopt);
-  }
-
-  std::string huggingFaceHost{kHuggingFaceHost};
-  std::string unique_model_id{author + ":" + model_id + ":" + file_name};
-
-  auto model_entry = db_service_->GetModelInfo(unique_model_id);
-
-  if (model_entry.has_value()) {
-    CLI_LOG("Model already downloaded: " << unique_model_id);
-    return unique_model_id;
-  }
-
-  auto local_path{file_manager_utils::GetModelsContainerPath() /
-                  kHuggingFaceHost / author / model_id / file_name};
-
-  try {
-    std::filesystem::create_directories(local_path.parent_path());
-  } catch (const std::filesystem::filesystem_error& e) {
-    // if file exist, remove it
-    std::filesystem::remove(local_path.parent_path());
-    std::filesystem::create_directories(local_path.parent_path());
-  }
-
-  auto download_url = url_parser::FromUrl(url_obj.value());
-  // this assume that the model being downloaded is a single gguf file
-  auto downloadTask{DownloadTask{.id = model_id,
-                                 .type = DownloadType::Model,
-                                 .items = {DownloadItem{
-                                     .id = unique_model_id,
-                                     .downloadUrl = download_url,
-                                     .localPath = local_path,
-                                 }}}};
-
-  auto on_finished = [this, author](const DownloadTask& finishedTask) {
-    // Sum downloadedBytes from all items
-    uint64_t model_size = 0;
-    for (const auto& item : finishedTask.items) {
-      model_size = model_size + item.bytes.value_or(0);
-    }
-    auto gguf_download_item = finishedTask.items[0];
-    ParseGguf(*db_service_, gguf_download_item, author, std::nullopt,
-              model_size);
-  };
-
-  auto result = download_service_->AddDownloadTask(downloadTask, on_finished);
-  if (result.has_error()) {
-    CTL_ERR(result.error());
-    return cpp::fail(result.error());
-  } else if (result && result.value()) {
-    CLI_LOG("Model " << model_id << " downloaded successfully!")
-  }
-  return unique_model_id;
-}
-
 bool ModelService::HasModel(const std::string& id) const {
   return db_service_->HasModel(id);
 }
@@ -464,7 +345,7 @@ bool ModelService::HasModel(const std::string& id) const {
 cpp::result<DownloadTask, std::string>
 ModelService::DownloadModelFromCortexsoAsync(
     const std::string& name, const std::string& branch,
-    std::optional<std::string> temp_model_id) {
+    std::optional<std::string> temp_model_id, bool resume) {
 
   auto download_task = GetDownloadTask(name, branch);
   if (download_task.has_error()) {
@@ -605,6 +486,7 @@ ModelService::DownloadModelFromCortexsoAsync(
 
   auto task = download_task.value();
   task.id = unique_model_id;
+  task.resume = resume;
   return download_service_->AddTask(task, on_finished);
 }
 
@@ -679,37 +561,6 @@ cpp::result<std::string, std::string> ModelService::DownloadModelFromCortexso(
     return model_id;
   }
   return cpp::fail("Failed to download model " + model_id);
-}
-
-cpp::result<std::string, std::string>
-ModelService::DownloadHuggingFaceGgufModel(
-    const std::string& author, const std::string& modelName,
-    std::optional<std::string> fileName) {
-  auto repo_info =
-      huggingface_utils::GetHuggingFaceModelRepoInfo(author, modelName);
-
-  if (!repo_info.has_value()) {
-    return cpp::fail("Model not found");
-  }
-
-  if (!repo_info->gguf.has_value()) {
-    return cpp::fail(
-        "Not a GGUF model. Currently, only GGUF single file is "
-        "supported.");
-  }
-
-  std::vector<std::string> options{};
-  for (const auto& sibling : repo_info->siblings) {
-    if (string_utils::EndsWith(sibling.rfilename, ".gguf")) {
-      options.push_back(sibling.rfilename);
-    }
-  }
-  auto selection = cli_selection_utils::PrintSelection(options);
-  std::cout << "Selected: " << selection.value() << std::endl;
-
-  auto download_url = huggingface_utils::GetDownloadableUrl(author, modelName,
-                                                            selection.value());
-  return HandleUrl(download_url);
 }
 
 cpp::result<void, std::string> ModelService::DeleteModel(
@@ -1373,4 +1224,52 @@ std::string ModelService::GetEngineByModelId(
   auto mc = yaml_handler.GetModelConfig();
   CTL_DBG(mc.engine);
   return mc.engine;
+}
+
+cpp::result<DownloadTask, std::string> ModelService::GetDownloadTask(
+    const std::string& modelId, const std::string& branch) {
+  url_parser::Url url = {
+      .protocol = "https",
+      .host = kHuggingFaceHost,
+      .pathParams = {"api", "models", "cortexso", modelId, "tree", branch},
+  };
+
+  auto result = curl_utils::SimpleGetJsonRecursive(url.ToFullPath());
+  if (result.has_error()) {
+    return cpp::fail("Model " + modelId + " not found");
+  }
+
+  std::vector<DownloadItem> download_items{};
+  auto model_container_path = file_manager_utils::GetModelsContainerPath() /
+                              "cortex.so" / modelId / branch;
+  file_manager_utils::CreateDirectoryRecursively(model_container_path.string());
+
+  for (const auto& value : result.value()) {
+    // std::cout << "value object: " << value.toStyledString() << std::endl;
+    auto path = value["path"].asString();
+    if (path == ".gitattributes" || path == ".gitignore" ||
+        path == "README.md") {
+      continue;
+    }
+    url_parser::Url download_url = {
+        .protocol = "https",
+        .host = kHuggingFaceHost,
+        .pathParams = {"cortexso", modelId, "resolve", branch, path}};
+
+    auto local_path = model_container_path / path;
+    if (!std::filesystem::exists(local_path.parent_path())) {
+      std::filesystem::create_directories(local_path.parent_path());
+    }
+    auto file_size = download_service_->GetFileSize(download_url.ToFullPath());
+    CTL_DBG("file_size: " << file_size.value_or(0));
+    download_items.push_back(
+        DownloadItem{.id = path,
+                     .downloadUrl = download_url.ToFullPath(),
+                     .localPath = local_path,
+                     .bytes = file_size.value_or(0)});
+  }
+
+  return DownloadTask{.id = branch == "main" ? modelId : modelId + "-" + branch,
+                      .type = DownloadType::Model,
+                      .items = download_items};
 }

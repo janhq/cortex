@@ -346,14 +346,16 @@ cpp::result<void, std::string> EngineService::DownloadEngine(
     CTL_INF("Finished!");
   };
 
-  auto downloadTask =
-      DownloadTask{.id = selected_variant->name,
-                   .type = DownloadType::Engine,
-                   .items = {DownloadItem{
-                       .id = selected_variant->name,
-                       .downloadUrl = selected_variant->browser_download_url,
-                       .localPath = variant_path,
-                   }}};
+  auto downloadTask = DownloadTask{
+      .id = selected_variant->name,
+      .type = DownloadType::Engine,
+      .items = {DownloadItem{
+          .id = selected_variant->name,
+          .downloadUrl = selected_variant->browser_download_url,
+          .localPath = variant_path,
+      }},
+      .resume = false,
+  };
 
   auto add_task_result = download_service_->AddTask(downloadTask, on_finished);
   if (add_task_result.has_error()) {
@@ -402,6 +404,7 @@ cpp::result<bool, std::string> EngineService::DownloadCuda(
       .items = {DownloadItem{.id = download_id,
                              .downloadUrl = cuda_toolkit_url,
                              .localPath = cuda_toolkit_local_path}},
+      .resume = false,
   }};
 
   auto on_finished = [engine](const DownloadTask& finishedTask) {

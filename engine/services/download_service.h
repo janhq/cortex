@@ -27,6 +27,7 @@ class DownloadService {
     std::string task_id;
     std::string item_id;
     DownloadService* download_service;
+    std::unordered_map<std::string, uint64_t> download_bytes;
   };
 
   // Each worker represents a thread. Each worker will have its own multi_handle
@@ -62,7 +63,7 @@ class DownloadService {
       const std::vector<std::pair<CURL*, FILE*>>& handles);
 
   void SetUpCurlHandle(CURL* handle, const DownloadItem& item, FILE* file,
-                       DownloadingData* dl_data);
+                       DownloadingData* dl_data, bool resume_download);
 
   void EmitTaskStarted(const DownloadTask& task);
 
@@ -127,10 +128,9 @@ class DownloadService {
 
   void Shutdown();
 
-  cpp::result<bool, std::string> Download(
-      const std::string& download_id,
-      const DownloadItem& download_item,
-      bool show_progress = true) noexcept;
+  cpp::result<bool, std::string> Download(const std::string& download_id,
+                                          const DownloadItem& download_item,
+                                          bool show_progress = true) noexcept;
 
   std::shared_ptr<EventQueue> event_queue_;
 
@@ -190,8 +190,9 @@ class DownloadService {
           continue;
         }
 
-        item.bytes = dltotal;
-        item.downloadedBytes = dlnow;
+        item.bytes = dltotal + downloading_data->download_bytes[item.id];
+        item.downloadedBytes =
+            dlnow + downloading_data->download_bytes[item.id];
 
         if (item.bytes == 0 || item.bytes == item.downloadedBytes) {
           break;

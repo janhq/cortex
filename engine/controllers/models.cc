@@ -45,6 +45,7 @@ void Models::PullModel(const HttpRequestPtr& req,
 
   std::optional<std::string> desired_model_name = std::nullopt;
   auto name_value = (*(req->getJsonObject())).get("name", "").asString();
+  auto resume = (*(req->getJsonObject())).get("resume", true).asBool();
 
   if (!name_value.empty()) {
     desired_model_name = name_value;
@@ -55,7 +56,7 @@ void Models::PullModel(const HttpRequestPtr& req,
     CTL_INF("Handle model input, model handle: " + model_handle);
     if (string_utils::StartsWith(model_handle, "https")) {
       return model_service_->HandleDownloadUrlAsync(
-          model_handle, desired_model_id, desired_model_name);
+          model_handle, desired_model_id, desired_model_name, resume);
     } else if (model_handle.find(":") != std::string::npos) {
       auto model_and_branch = string_utils::SplitBy(model_handle, ":");
       if (model_and_branch.size() == 3) {
@@ -69,11 +70,11 @@ void Models::PullModel(const HttpRequestPtr& req,
                 "main",
                 model_and_branch[2],
             }}.ToFullPath();
-        return model_service_->HandleDownloadUrlAsync(mh, desired_model_id,
-                                                      desired_model_name);
+        return model_service_->HandleDownloadUrlAsync(
+            mh, desired_model_id, desired_model_name, resume);
       }
       return model_service_->DownloadModelFromCortexsoAsync(
-          model_and_branch[0], model_and_branch[1], desired_model_id);
+          model_and_branch[0], model_and_branch[1], desired_model_id, resume);
     }
 
     return cpp::fail("Invalid model handle or not supported!");
