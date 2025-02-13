@@ -17,10 +17,6 @@ namespace {
 std::string Repo2Engine(const std::string& r) {
   if (r == kLlamaRepo) {
     return kLlamaEngine;
-  } else if (r == kOnnxRepo) {
-    return kOnnxEngine;
-  } else if (r == kTrtLlmRepo) {
-    return kTrtLlmEngine;
   }
   return r;
 };

@@ -297,9 +297,7 @@ void Models::GetModel(const HttpRequestPtr& req,
             fs::path(model_entry.value().path_to_model_yaml))
             .string());
     auto model_config = yaml_handler.GetModelConfig();
-    if (model_config.engine == kOnnxEngine ||
-        model_config.engine == kLlamaEngine ||
-        model_config.engine == kTrtLlmEngine) {
+    if (model_config.engine == kLlamaEngine) {
       auto ret = model_config.ToJsonString();
       auto resp = cortex_utils::CreateCortexHttpTextAsJsonResponse(ret);
       resp->setStatusCode(drogon::k200OK);
@@ -379,9 +377,7 @@ void Models::UpdateModel(const HttpRequestPtr& req,
     yaml_handler.ModelConfigFromFile(yaml_fp.string());
     config::ModelConfig model_config = yaml_handler.GetModelConfig();
     std::string message;
-    if (model_config.engine == kOnnxEngine ||
-        model_config.engine == kLlamaEngine ||
-        model_config.engine == kTrtLlmEngine) {
+    if (model_config.engine == kLlamaEngine) {
       model_config.FromJson(json_body);
       yaml_handler.UpdateModelConfig(model_config);
       yaml_handler.WriteYamlFile(yaml_fp.string());

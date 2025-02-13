@@ -27,19 +27,16 @@ namespace {
 std::string GetSuitableCudaVersion(const std::string& engine,
                                    const std::string& cuda_driver_version) {
   auto suitable_toolkit_version = "";
-  if (engine == kTrtLlmRepo || engine == kTrtLlmEngine) {
-    // for tensorrt-llm, we need to download cuda toolkit v12.4
-    suitable_toolkit_version = "12.4";
-  } else {
-    // llamacpp
-    auto cuda_driver_semver =
-        semantic_version_utils::SplitVersion(cuda_driver_version);
-    if (cuda_driver_semver.major == 11) {
-      suitable_toolkit_version = "11.7";
-    } else if (cuda_driver_semver.major == 12) {
-      suitable_toolkit_version = "12.0";
-    }
+
+  // llamacpp
+  auto cuda_driver_semver =
+      semantic_version_utils::SplitVersion(cuda_driver_version);
+  if (cuda_driver_semver.major == 11) {
+    suitable_toolkit_version = "11.7";
+  } else if (cuda_driver_semver.major == 12) {
+    suitable_toolkit_version = "12.0";
   }
+
   return suitable_toolkit_version;
 }
 
@@ -47,10 +44,6 @@ std::string GetSuitableCudaVersion(const std::string& engine,
 std::string NormalizeEngine(const std::string& engine) {
   if (engine == kLlamaEngine) {
     return kLlamaRepo;
-  } else if (engine == kOnnxEngine) {
-    return kOnnxRepo;
-  } else if (engine == kTrtLlmEngine) {
-    return kTrtLlmRepo;
   }
   return engine;
 };
@@ -58,10 +51,6 @@ std::string NormalizeEngine(const std::string& engine) {
 std::string Repo2Engine(const std::string& r) {
   if (r == kLlamaRepo) {
     return kLlamaEngine;
-  } else if (r == kOnnxRepo) {
-    return kOnnxEngine;
-  } else if (r == kTrtLlmRepo) {
-    return kTrtLlmEngine;
   }
   return r;
 };
@@ -69,10 +58,6 @@ std::string Repo2Engine(const std::string& r) {
 std::string GetEnginePath(std::string_view e) {
   if (e == kLlamaRepo) {
     return kLlamaLibPath;
-  } else if (e == kOnnxRepo) {
-    return kOnnxLibPath;
-  } else if (e == kTrtLlmRepo) {
-    return kTensorrtLlmPath;
   }
   return kLlamaLibPath;
 };
@@ -85,13 +70,6 @@ cpp::result<void, std::string> EngineService::InstallEngineAsync(
   CTL_INF("InstallEngineAsync: " << ne << ", " << version << ", "
                                  << variant_name.value_or(""));
   auto os = hw_inf_.sys_inf->os;
-  if (os == kMacOs && (ne == kOnnxRepo || ne == kTrtLlmRepo)) {
-    return cpp::fail("Engine " + ne + " is not supported on macOS");
-  }
-
-  if (os == kLinuxOs && ne == kOnnxRepo) {
-    return cpp::fail("Engine " + ne + " is not supported on Linux");
-  }
 
   auto result = DownloadEngine(ne, version, variant_name);
   if (result.has_error()) {
@@ -386,9 +364,8 @@ cpp::result<void, std::string> EngineService::DownloadEngine(
 
 cpp::result<bool, std::string> EngineService::DownloadCuda(
     const std::string& engine, bool async) {
-  if (hw_inf_.sys_inf->os == "mac" || engine == kOnnxRepo ||
-      engine == kOnnxEngine) {
-    // mac and onnx engine does not require cuda toolkit
+  if (hw_inf_.sys_inf->os == "mac") {
+    // mac does not require cuda toolkit
     return true;
   }
 
@@ -453,13 +430,7 @@ cpp::result<bool, std::string> EngineService::DownloadCuda(
 std::string EngineService::GetMatchedVariant(
     const std::string& engine, const std::vector<std::string>& variants) {
   std::string matched_variant;
-  if (engine == kTrtLlmRepo || engine == kTrtLlmEngine) {
-    matched_variant = engine_matcher_utils::ValidateTensorrtLlm(
-        variants, hw_inf_.sys_inf->os, hw_inf_.cuda_driver_version);
-  } else if (engine == kOnnxRepo || engine == kOnnxEngine) {
-    matched_variant = engine_matcher_utils::ValidateOnnx(
-        variants, hw_inf_.sys_inf->os, hw_inf_.sys_inf->arch);
-  } else if (engine == kLlamaRepo || engine == kLlamaEngine) {
+  if (engine == kLlamaRepo || engine == kLlamaEngine) {
     auto suitable_avx =
         engine_matcher_utils::GetSuitableAvxVariant(hw_inf_.cpu_inf);
     matched_variant = engine_matcher_utils::Validate(
@@ -638,13 +609,6 @@ cpp::result<std::vector<EngineVariantResponse>, std::string>
 EngineService::GetInstalledEngineVariants(const std::string& engine) const {
   auto ne = NormalizeEngine(engine);
   auto os = hw_inf_.sys_inf->os;
-  if (os == kMacOs && (ne == kOnnxRepo || ne == kTrtLlmRepo)) {
-    return cpp::fail("Engine " + engine + " is not supported on macOS");
-  }
-
-  if (os == kLinuxOs && ne == kOnnxRepo) {
-    return cpp::fail("Engine " + engine + " is not supported on Linux");
-  }
 
   auto engines_variants_dir =
       file_manager_utils::GetEnginesContainerPath() / ne;
@@ -954,13 +918,7 @@ cpp::result<bool, std::string> EngineService::IsEngineReady(
   }
 
   auto os = hw_inf_.sys_inf->os;
-  if (os == kMacOs && (ne == kOnnxRepo || ne == kTrtLlmRepo)) {
-    return cpp::fail("Engine " + engine + " is not supported on macOS");
-  }
 
-  if (os == kLinuxOs && ne == kOnnxRepo) {
-    return cpp::fail("Engine " + engine + " is not supported on Linux");
-  }
   auto installed_variants = GetInstalledEngineVariants(engine);
   if (installed_variants.has_error()) {
     return cpp::fail(installed_variants.error());

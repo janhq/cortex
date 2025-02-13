@@ -13,10 +13,6 @@ namespace {
 std::string NormalizeEngine(const std::string& engine) {
   if (engine == kLlamaEngine) {
     return kLlamaRepo;
-  } else if (engine == kOnnxEngine) {
-    return kOnnxRepo;
-  } else if (engine == kTrtLlmEngine) {
-    return kTrtLlmRepo;
   }
   return engine;
 };
