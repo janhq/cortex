@@ -939,6 +939,11 @@ cpp::result<StartModelResult, std::string> ModelService::StartModel(
 
     json_helper::MergeJson(json_data, params_override);
 
+    // Set default cpu_threads if it is not configured
+    if (!json_data.isMember("cpu_threads")) {
+      json_data["cpu_threads"] = GetCpuThreads();
+    }
+
     // Set the latest ctx_len
     if (ctx_len) {
       json_data["ctx_len"] =
@@ -1319,6 +1324,10 @@ ModelService::MayFallbackToCpu(const std::string& model_path, int ngl,
   }
 
   return warning;
+}
+
+int ModelService::GetCpuThreads() const {
+  return std::max(std::thread::hardware_concurrency() / 2, 1u);
 }
 
 cpp::result<std::shared_ptr<ModelMetadata>, std::string>
